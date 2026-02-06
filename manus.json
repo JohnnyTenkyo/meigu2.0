@@ -1,0 +1,23 @@
+{
+  "name": "stock-analysis",
+  "title": "美股智能分析选股系统",
+  "description": "基于Yahoo Finance API的美股实时分析系统，支持239只股票的技术指标分析和条件选股",
+  "version": "1.0.0",
+  "type": "web-db-user",
+  "runtime": "node",
+  "buildCommand": "pnpm install && pnpm run build",
+  "startCommand": "pnpm run start",
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": "3000"
+  },
+  "features": {
+    "database": true,
+    "oauth": true,
+    "analytics": false
+  },
+  "repository": {
+    "type": "github",
+    "url": "https://github.com/JohnnyTenkyo/meigu2.0"
+  }
+}
