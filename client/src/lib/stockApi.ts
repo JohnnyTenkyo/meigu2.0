@@ -18,6 +18,8 @@ export function toFutuTime(timestamp: number, interval: TimeInterval): number {
     '4h': 14400000,
   };
 
+  // For intraday, we show the END of the period
+  // If a 30m candle starts at 9:30, it represents 9:30-10:00, so we show 10:00
   return timestamp + (intervalMs[interval] || 0);
 }
 

@@ -67,10 +67,14 @@ function aggregateCandles(candles: Candle[], targetMinutes: number): Candle[] {
     const { etH, etM, dateStr } = getETHour(c.time);
     
     // Calculate total minutes from market open (9:30)
+    // 09:30 is minute 0. 09:31 is minute 1.
     const totalMinutes = (etH - 9) * 60 + (etM - 30);
-    if (totalMinutes < 0) continue; // Before market open
+    
+    // Filter for regular market hours (9:30 AM - 4:00 PM ET)
+    if (totalMinutes < 0 || totalMinutes >= 390) continue; 
     
     // Group by block
+    // If targetMinutes = 30, then 0-29 is block 0 (9:30-9:59), 30-59 is block 1 (10:00-10:29)
     const blockIndex = Math.floor(totalMinutes / targetMinutes);
     const key = `${dateStr}-${blockIndex}`;
     
@@ -220,9 +224,17 @@ export const stockRouter = router({
 
       let candles = await fetchYahooChart(symbol, yahooInterval, range);
 
-      // Aggregate if needed (3m, 2h, 3h, 4h)
-      if (aggregateMinutes) {
-        candles = aggregateCandles(candles, aggregateMinutes);
+      // Filter and aggregate for intraday intervals
+      if (['1m', '3m', '5m', '15m', '30m', '1h', '2h', '3h', '4h'].includes(interval)) {
+        // For 1m, 5m, 15m, 30m, 1h, we still pass through aggregateCandles to filter hours and align time
+        const aggMin = aggregateMinutes || (
+          interval === '1m' ? 1 :
+          interval === '5m' ? 5 :
+          interval === '15m' ? 15 :
+          interval === '30m' ? 30 :
+          interval === '1h' ? 60 : 1
+        );
+        candles = aggregateCandles(candles, aggMin);
       }
 
       // Aggregate daily to weekly

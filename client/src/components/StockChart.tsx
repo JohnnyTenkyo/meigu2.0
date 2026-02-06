@@ -66,14 +66,14 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     });
     mainChartApi.current = chart;
 
-    // Candlestick series
+    // Candlestick series - Modified to Red Up, Green Down
     const candleSeries = chart.addCandlestickSeries({
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
+      upColor: '#ef4444', // Red for up
+      downColor: '#22c55e', // Green for down
+      borderUpColor: '#ef4444',
+      borderDownColor: '#22c55e',
+      wickUpColor: '#ef4444',
+      wickDownColor: '#22c55e',
     });
 
     const candleData: CandlestickData[] = candles.map(c => ({
@@ -85,10 +85,9 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     }));
     candleSeries.setData(candleData);
 
-    // Ladder lines - 复刻富途牛牛逻辑
+    // Ladder lines
     const ladder = calculateLadder(candles);
     if (ladder.length > 0) {
-      // 蓝梯子
       const blueUpSeries = chart.addLineSeries({
         color: 'rgba(59, 130, 246, 0.8)',
         lineWidth: 1,
@@ -102,7 +101,6 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
         crosshairMarkerVisible: false,
       });
       
-      // 黄梯子
       const yellowUpSeries = chart.addLineSeries({
         color: 'rgba(234, 179, 8, 0.8)',
         lineWidth: 1,
@@ -116,8 +114,6 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
         crosshairMarkerVisible: false,
       });
 
-      // 填充逻辑：轻量级图表不支持 null 值，且 STICKLINE 在条件不满足时不显示。
-      // 为了符合富途体验，我们始终显示线条，因为 A/B 线本身就是 EMA。
       blueUpSeries.setData(ladder.map(l => ({ 
         time: toChartTime(l.time, interval), 
         value: l.blueUp 
@@ -137,12 +133,12 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
       })));
     }
 
-    // CD Signal markers
+    // CD Signal markers - Modified to Red Buy, Green Sell
     if (cdSignals.length > 0) {
       const markers = cdSignals.map(s => ({
         time: toChartTime(s.time, interval),
         position: s.type === 'buy' ? 'belowBar' as const : 'aboveBar' as const,
-        color: s.type === 'buy' ? '#ef4444' : '#22c55e',
+        color: s.type === 'buy' ? '#ef4444' : '#22c55e', // Red for buy, Green for sell
         shape: s.type === 'buy' ? 'arrowUp' as const : 'arrowDown' as const,
         text: s.label,
       }));
@@ -160,7 +156,7 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     volumeSeries.setData(candles.map(c => ({
       time: toChartTime(c.time, interval),
       value: c.volume,
-      color: c.close >= c.open ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+      color: c.close >= c.open ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)', // Red Up, Green Down
     })));
 
     chart.timeScale().fitContent();
@@ -206,7 +202,9 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     const macdData: HistogramData[] = candles.map((c, i) => ({
       time: toChartTime(c.time, interval),
       value: macd[i],
-      color: macd[i] >= 0 ? (macd[i] >= (i > 0 ? macd[i-1] : 0) ? '#22c55e' : '#15803d') : (macd[i] <= (i > 0 ? macd[i-1] : 0) ? '#ef4444' : '#b91c1c'),
+      color: macd[i] >= 0 
+        ? (macd[i] >= (i > 0 ? macd[i-1] : 0) ? '#ef4444' : '#b91c1c') // Red for positive MACD
+        : (macd[i] <= (i > 0 ? macd[i-1] : 0) ? '#22c55e' : '#15803d'), // Green for negative MACD
     }));
 
     diffSeries.setData(diffData);
