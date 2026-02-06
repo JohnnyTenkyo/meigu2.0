@@ -1,0 +1,26 @@
+{
+  "publish": {
+    "type": "permanent",
+    "domain": "stock-analysis",
+    "tld": "manus.space",
+    "ssl": true,
+    "autoRenew": true,
+    "environment": "production",
+    "scaling": {
+      "minInstances": 1,
+      "maxInstances": 10,
+      "autoScale": true
+    },
+    "database": {
+      "type": "mysql",
+      "autoBackup": true,
+      "backupInterval": "daily"
+    },
+    "features": {
+      "oauth": true,
+      "analytics": true,
+      "monitoring": true,
+      "logging": true
+    }
+  }
+}
