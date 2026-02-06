@@ -4,7 +4,7 @@ import { Candle, StockQuote, TimeInterval } from './types';
 // 1m K线第一根9:30开始 → 显示9:31
 // 30m K线第一根9:30开始 → 显示10:00
 export function toFutuTime(timestamp: number, interval: TimeInterval): number {
-  if (['1d', '1mo'].includes(interval)) return timestamp;
+  if (['1d', '1w', '1mo'].includes(interval)) return timestamp;
 
   const intervalMs: Record<string, number> = {
     '1m': 60000,

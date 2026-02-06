@@ -119,9 +119,38 @@ function aggregateDailyToMonthly(candles: Candle[]): Candle[] {
   return result.sort((a, b) => a.time - b.time);
 }
 
+// Aggregate daily candles to weekly (Mon-Fri)
+function aggregateDailyToWeekly(candles: Candle[]): Candle[] {
+  const groups = new Map<string, Candle[]>();
+  for (const c of candles) {
+    const d = new Date(c.time);
+    // Get ISO week start (Monday)
+    const day = d.getUTCDay();
+    const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1); // Monday
+    const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff));
+    const key = `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, '0')}-${String(monday.getUTCDate()).padStart(2, '0')}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c);
+  }
+
+  const result: Candle[] = [];
+  for (const group of Array.from(groups.values())) {
+    if (group.length === 0) continue;
+    result.push({
+      time: group[0].time,
+      open: group[0].open,
+      high: Math.max(...group.map((c: Candle) => c.high)),
+      low: Math.min(...group.map((c: Candle) => c.low)),
+      close: group[group.length - 1].close,
+      volume: group.reduce((sum: number, c: Candle) => sum + c.volume, 0),
+    });
+  }
+  return result.sort((a, b) => a.time - b.time);
+}
+
 // Interval to Yahoo params mapping
-function getYahooParams(interval: string): { yahooInterval: string; range: string; aggregateMinutes?: number } {
-  const map: Record<string, { yahooInterval: string; range: string; aggregateMinutes?: number }> = {
+function getYahooParams(interval: string): { yahooInterval: string; range: string; aggregateMinutes?: number; aggregateWeekly?: boolean } {
+  const map: Record<string, { yahooInterval: string; range: string; aggregateMinutes?: number; aggregateWeekly?: boolean }> = {
     '1m': { yahooInterval: '1m', range: '7d' },
     '3m': { yahooInterval: '1m', range: '7d', aggregateMinutes: 3 },
     '5m': { yahooInterval: '5m', range: '60d' },
@@ -132,6 +161,7 @@ function getYahooParams(interval: string): { yahooInterval: string; range: strin
     '3h': { yahooInterval: '60m', range: '730d', aggregateMinutes: 180 },
     '4h': { yahooInterval: '60m', range: '730d', aggregateMinutes: 240 },
     '1d': { yahooInterval: '1d', range: '5y' },
+    '1w': { yahooInterval: '1d', range: '10y', aggregateWeekly: true },
     '1mo': { yahooInterval: '1mo', range: 'max' },
   };
   return map[interval] || { yahooInterval: '1d', range: 'max' };
@@ -185,13 +215,19 @@ export const stockRouter = router({
     }))
     .query(async ({ input }) => {
       const { symbol, interval } = input;
-      const { yahooInterval, range, aggregateMinutes } = getYahooParams(interval);
+      const params = getYahooParams(interval);
+      const { yahooInterval, range, aggregateMinutes } = params;
 
       let candles = await fetchYahooChart(symbol, yahooInterval, range);
 
       // Aggregate if needed (3m, 2h, 3h, 4h)
       if (aggregateMinutes) {
         candles = aggregateCandles(candles, aggregateMinutes);
+      }
+
+      // Aggregate daily to weekly
+      if (params.aggregateWeekly) {
+        candles = aggregateDailyToWeekly(candles);
       }
 
       return candles;

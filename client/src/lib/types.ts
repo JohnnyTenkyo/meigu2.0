@@ -49,4 +49,4 @@ export interface NXSignal {
   label: string;
 }
 
-export type TimeInterval = '1m' | '3m' | '5m' | '15m' | '30m' | '1h' | '2h' | '3h' | '4h' | '1d' | '1mo';
+export type TimeInterval = '1m' | '3m' | '5m' | '15m' | '30m' | '1h' | '2h' | '3h' | '4h' | '1d' | '1w' | '1mo';

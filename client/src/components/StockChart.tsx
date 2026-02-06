@@ -42,7 +42,7 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     },
     timeScale: {
       borderColor: 'rgba(42, 46, 57, 0.5)',
-      timeVisible: ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '3h', '4h'].includes(interval),
+      timeVisible: !['1d', '1w', '1mo'].includes(interval),
       secondsVisible: false,
     },
     rightPriceScale: {

@@ -78,9 +78,37 @@ function aggregateDailyToMonthly(candles: Candle[]): Candle[] {
   return result.sort((a, b) => a.time - b.time);
 }
 
+// Replicate aggregateDailyToWeekly
+function aggregateDailyToWeekly(candles: Candle[]): Candle[] {
+  const groups = new Map<string, Candle[]>();
+  for (const c of candles) {
+    const d = new Date(c.time);
+    const day = d.getUTCDay();
+    const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff));
+    const key = `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, '0')}-${String(monday.getUTCDate()).padStart(2, '0')}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c);
+  }
+
+  const result: Candle[] = [];
+  for (const group of Array.from(groups.values())) {
+    if (group.length === 0) continue;
+    result.push({
+      time: group[0].time,
+      open: group[0].open,
+      high: Math.max(...group.map((c: Candle) => c.high)),
+      low: Math.min(...group.map((c: Candle) => c.low)),
+      close: group[group.length - 1].close,
+      volume: group.reduce((sum: number, c: Candle) => sum + c.volume, 0),
+    });
+  }
+  return result.sort((a, b) => a.time - b.time);
+}
+
 // Replicate getYahooParams
-function getYahooParams(interval: string): { yahooInterval: string; range: string } {
-  const map: Record<string, { yahooInterval: string; range: string }> = {
+function getYahooParams(interval: string): { yahooInterval: string; range: string; aggregateWeekly?: boolean } {
+  const map: Record<string, { yahooInterval: string; range: string; aggregateWeekly?: boolean }> = {
     '1m': { yahooInterval: '1m', range: '7d' },
     '5m': { yahooInterval: '5m', range: '60d' },
     '15m': { yahooInterval: '15m', range: '60d' },
@@ -88,6 +116,7 @@ function getYahooParams(interval: string): { yahooInterval: string; range: strin
     '1h': { yahooInterval: '60m', range: '730d' },
     '4h': { yahooInterval: '60m', range: '730d' },
     '1d': { yahooInterval: '1d', range: '5y' },
+    '1w': { yahooInterval: '1d', range: '10y', aggregateWeekly: true },
     '1mo': { yahooInterval: '1mo', range: 'max' },
   };
   return map[interval] || { yahooInterval: '1d', range: 'max' };
@@ -95,7 +124,7 @@ function getYahooParams(interval: string): { yahooInterval: string; range: strin
 
 // Replicate toFutuTime from stockApi.ts
 function toFutuTime(timestamp: number, interval: string): number {
-  if (['1d', '1mo'].includes(interval)) return timestamp;
+  if (['1d', '1w', '1mo'].includes(interval)) return timestamp;
 
   const intervalMs: Record<string, number> = {
     '1m': 60000,
@@ -220,6 +249,7 @@ describe("getYahooParams", () => {
     expect(getYahooParams("1h")).toEqual({ yahooInterval: "60m", range: "730d" });
     expect(getYahooParams("4h")).toEqual({ yahooInterval: "60m", range: "730d" });
     expect(getYahooParams("1d")).toEqual({ yahooInterval: "1d", range: "5y" });
+    expect(getYahooParams("1w")).toEqual({ yahooInterval: "1d", range: "10y", aggregateWeekly: true });
     expect(getYahooParams("1mo")).toEqual({ yahooInterval: "1mo", range: "max" });
   });
 
@@ -245,10 +275,11 @@ describe("toFutuTime (Futu standard end time)", () => {
     expect(toFutuTime(baseTime, "1m")).toBe(baseTime + 60000);
   });
 
-  it("does not modify daily/monthly timestamps", () => {
+  it("does not modify daily/weekly/monthly timestamps", () => {
     const baseTime = new Date("2025-01-29T00:00:00Z").getTime();
 
     expect(toFutuTime(baseTime, "1d")).toBe(baseTime);
+    expect(toFutuTime(baseTime, "1w")).toBe(baseTime);
     expect(toFutuTime(baseTime, "1mo")).toBe(baseTime);
   });
 
@@ -264,9 +295,65 @@ describe("toFutuTime (Futu standard end time)", () => {
   });
 });
 
+describe("aggregateDailyToWeekly", () => {
+  it("returns empty array for empty input", () => {
+    expect(aggregateDailyToWeekly([])).toEqual([]);
+  });
+
+  it("groups daily candles by week (Mon-Fri)", () => {
+    const candles: Candle[] = [];
+    // 2 weeks of daily data: Mon Jan 6 to Fri Jan 17, 2025
+    for (let i = 6; i <= 17; i++) {
+      const dayOfWeek = new Date(`2025-01-${String(i).padStart(2, '0')}T12:00:00Z`).getUTCDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) continue; // Skip weekends
+      candles.push({
+        time: new Date(`2025-01-${String(i).padStart(2, '0')}T12:00:00Z`).getTime(),
+        open: 100 + i,
+        high: 110 + i,
+        low: 90 + i,
+        close: 105 + i,
+        volume: 10000,
+      });
+    }
+
+    const result = aggregateDailyToWeekly(candles);
+    expect(result.length).toBe(2); // 2 weeks
+  });
+
+  it("preserves OHLCV correctly", () => {
+    // Mon-Fri of one week
+    const candles: Candle[] = [
+      { time: new Date("2025-01-06T12:00:00Z").getTime(), open: 100, high: 110, low: 95, close: 105, volume: 1000 },
+      { time: new Date("2025-01-07T12:00:00Z").getTime(), open: 105, high: 115, low: 100, close: 108, volume: 2000 },
+      { time: new Date("2025-01-08T12:00:00Z").getTime(), open: 108, high: 120, low: 88, close: 112, volume: 3000 },
+      { time: new Date("2025-01-09T12:00:00Z").getTime(), open: 112, high: 118, low: 105, close: 110, volume: 1500 },
+      { time: new Date("2025-01-10T12:00:00Z").getTime(), open: 110, high: 116, low: 102, close: 114, volume: 2500 },
+    ];
+
+    const result = aggregateDailyToWeekly(candles);
+    expect(result.length).toBe(1);
+    expect(result[0].open).toBe(100); // Monday open
+    expect(result[0].high).toBe(120); // Max high (Wed)
+    expect(result[0].low).toBe(88); // Min low (Wed)
+    expect(result[0].close).toBe(114); // Friday close
+    expect(result[0].volume).toBe(10000); // Sum
+  });
+
+  it("sorts result by time", () => {
+    const candles: Candle[] = [
+      { time: new Date("2025-01-13T12:00:00Z").getTime(), open: 100, high: 110, low: 90, close: 105, volume: 1000 },
+      { time: new Date("2025-01-06T12:00:00Z").getTime(), open: 95, high: 105, low: 85, close: 100, volume: 1000 },
+    ];
+
+    const result = aggregateDailyToWeekly(candles);
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i].time).toBeGreaterThan(result[i - 1].time);
+    }
+  });
+});
+
 describe("Cache behavior (in-memory)", () => {
   it("cache key format includes symbol and interval", () => {
-    // Test that different intervals produce different cache keys
     const key1 = `yahoo:TSLA:1d:5y`;
     const key2 = `yahoo:TSLA:60m:730d`;
     const key3 = `yahoo:AAPL:1d:5y`;
