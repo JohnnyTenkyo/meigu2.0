@@ -88,14 +88,25 @@ export default function Screener() {
               if (candles.length >= 30) {
                 const pressure = calculateBuySellPressure(candles);
                 const recent = pressure.slice(-5);
+                
+                // Check for both up and down signals
                 const strongUp = recent.find(p => p.signal === 'strong_up');
+                const strongDown = recent.find(p => p.signal === 'strong_down');
+                
                 if (strongUp) {
                   stockSignals.push({
                     type: 'bsp',
-                    label: `⚡ 买卖力道 (${level})`,
+                    label: `⚡ 买卖力道上涨 (${level})`,
                     detail: `+${strongUp.changeRate.toFixed(1)}%`,
                   });
-                  break; // Found at one level is enough for this condition
+                  break;
+                } else if (strongDown) {
+                  stockSignals.push({
+                    type: 'bsp',
+                    label: `💀 买卖力道下跌 (${level})`,
+                    detail: `${strongDown.changeRate.toFixed(1)}%`,
+                  });
+                  break;
                 }
               }
             } catch {}
@@ -105,8 +116,6 @@ export default function Screener() {
 
         // 2. Check CD signals
         if (cdEnabled && cdLevels.length > 0) {
-          // If logic is AND and we already failed previous condition, we could skip, 
-          // but for simplicity we check all and then filter
           for (const level of cdLevels) {
             try {
               const candles = await fetchStockData(symbol, level);
@@ -223,10 +232,13 @@ export default function Screener() {
                 <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${bspEnabled ? 'border-purple-500 bg-purple-500' : 'border-muted-foreground'}`}>
                   {bspEnabled && <span className="text-white text-xs">✓</span>}
                 </div>
-                <Zap size={18} className={bspEnabled ? 'text-purple-500' : 'text-muted-foreground'} />
+                <div className="flex gap-1">
+                  <Zap size={18} className={bspEnabled ? 'text-purple-500' : 'text-muted-foreground'} />
+                  <span className={bspEnabled ? 'text-green-500' : 'text-muted-foreground'}>💀</span>
+                </div>
                 <div>
-                  <div className="text-sm font-medium">买卖力道双位数上涨</div>
-                  <div className="text-xs text-muted-foreground">成交量放大+动能变化率≥10%（可选多个级别）</div>
+                  <div className="text-sm font-medium">买卖力道双位数变动</div>
+                  <div className="text-xs text-muted-foreground">动能变化率 ≥10% (⚡) 或 ≤-10% (💀)</div>
                 </div>
               </button>
               {bspEnabled && (

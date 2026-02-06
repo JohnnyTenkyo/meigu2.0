@@ -260,13 +260,13 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     pressureSeries.setData(pressureData);
 
     const markers = buySellPressure
-      .filter(p => p.signal === 'strong_up')
+      .filter(p => p.signal !== undefined)
       .map(p => ({
         time: toChartTime(p.time, interval),
-        position: 'aboveBar' as const,
-        color: '#a78bfa',
+        position: p.signal === 'strong_up' ? 'aboveBar' as const : 'belowBar' as const,
+        color: p.signal === 'strong_up' ? '#a78bfa' : '#22c55e', // Purple for up, Green for down
         shape: 'circle' as const,
-        text: '⚡',
+        text: p.signal === 'strong_up' ? '⚡' : '💀',
       }));
     if (markers.length > 0) {
       pressureSeries.setMarkers(markers);
@@ -330,7 +330,7 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
       <div className="text-xs text-muted-foreground px-2 py-1 flex items-center gap-2">
         <span className="font-medium text-purple">副图</span>
         <span className="text-purple">买卖力道</span>
-        <span className="text-xs">双位数上涨 = 动能强劲 ⚡</span>
+        <span className="text-xs">双位数上涨 = 动能强劲 ⚡ | 双位数下跌 = 动能衰竭 💀</span>
       </div>
       <div ref={pressureChartRef} className="w-full rounded-md overflow-hidden border border-border" />
     </div>

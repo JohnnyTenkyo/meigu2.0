@@ -308,8 +308,10 @@ export function calculateBuySellPressure(candles: Candle[]): BuySellPressure[] {
     const changeRate = pressure - prevPressure;
     
     let signal: 'strong_up' | 'strong_down' | undefined;
-    if (pressure > 10 && changeRate > 2) signal = 'strong_up';
-    if (pressure < -10 && changeRate < -2) signal = 'strong_down';
+    // 双位数上涨提醒 (变化率 > 10%)
+    if (changeRate > 10) signal = 'strong_up';
+    // 双位数下跌提醒 (变化率 < -10%)
+    if (changeRate < -10) signal = 'strong_down';
     
     result.push({
       time: candles[i].time,
