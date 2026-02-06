@@ -21,6 +21,9 @@ export interface CDSignal {
   type: 'buy' | 'sell';
   strength: 'strong' | 'medium' | 'weak';
   label: string;
+  diffValue?: number;
+  deaValue?: number;
+  macdValue?: number;
 }
 
 export interface BuySellPressure {
@@ -36,6 +39,8 @@ export interface LadderLevel {
   blueDn: number;
   yellowUp: number;
   yellowDn: number;
+  blueMid?: number;
+  yellowMid?: number;
 }
 
 export interface NXSignal {
@@ -44,4 +49,4 @@ export interface NXSignal {
   label: string;
 }
 
-export type TimeInterval = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | '1mo';
+export type TimeInterval = '1m' | '3m' | '5m' | '15m' | '30m' | '1h' | '2h' | '3h' | '4h' | '1d' | '1mo';

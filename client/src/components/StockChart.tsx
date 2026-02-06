@@ -1,7 +1,7 @@
 import { useEffect, useRef, useMemo } from 'react';
-import { createChart, IChartApi, ISeriesApi, CandlestickData, HistogramData, LineData, Time } from 'lightweight-charts';
+import { createChart, IChartApi, CandlestickData, HistogramData, LineData, Time } from 'lightweight-charts';
 import { Candle, TimeInterval, CDSignal, BuySellPressure } from '@/lib/types';
-import { calculateMACD, calculateBuySellPressure, calculateLadder } from '@/lib/indicators';
+import { calculateMACD, calculateBuySellPressure, calculateLadder, calculateCDSignals } from '@/lib/indicators';
 import { toFutuTime } from '@/lib/stockApi';
 
 interface StockChartProps {
@@ -42,7 +42,7 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     },
     timeScale: {
       borderColor: 'rgba(42, 46, 57, 0.5)',
-      timeVisible: ['1m', '5m', '15m', '30m', '1h', '4h'].includes(interval),
+      timeVisible: ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '3h', '4h'].includes(interval),
       secondsVisible: false,
     },
     rightPriceScale: {
@@ -50,11 +50,10 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     },
   }), [interval]);
 
-  // Main chart (K-line + Ladder)
+  // Main chart (K-line + Ladder with smooth styling + vertical lines)
   useEffect(() => {
     if (!mainChartRef.current || candles.length === 0) return;
 
-    // Clean up old chart
     if (mainChartApi.current) {
       mainChartApi.current.remove();
       mainChartApi.current = null;
@@ -86,26 +85,67 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     }));
     candleSeries.setData(candleData);
 
-    // Ladder lines
+    // Ladder lines - smoother with area fill effect
     const ladder = calculateLadder(candles);
     if (ladder.length > 0) {
-      const blueUpSeries = chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, title: '蓝梯上轨' });
-      const blueDnSeries = chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, title: '蓝梯下轨' });
-      const yellowUpSeries = chart.addLineSeries({ color: '#eab308', lineWidth: 1, title: '黄梯上轨' });
-      const yellowDnSeries = chart.addLineSeries({ color: '#eab308', lineWidth: 1, title: '黄梯下轨' });
+      // Blue ladder - upper and lower with mid line
+      const blueUpSeries = chart.addLineSeries({
+        color: 'rgba(59, 130, 246, 0.8)',
+        lineWidth: 2,
+        title: '蓝梯上轨',
+        crosshairMarkerVisible: false,
+      });
+      const blueDnSeries = chart.addLineSeries({
+        color: 'rgba(59, 130, 246, 0.8)',
+        lineWidth: 2,
+        title: '蓝梯下轨',
+        crosshairMarkerVisible: false,
+      });
+      // Blue mid line (vertical reference inside the channel)
+      const blueMidSeries = chart.addLineSeries({
+        color: 'rgba(59, 130, 246, 0.3)',
+        lineWidth: 1,
+        lineStyle: 2, // dashed
+        title: '',
+        crosshairMarkerVisible: false,
+      });
+
+      // Yellow ladder - upper and lower with mid line
+      const yellowUpSeries = chart.addLineSeries({
+        color: 'rgba(234, 179, 8, 0.8)',
+        lineWidth: 2,
+        title: '黄梯上轨',
+        crosshairMarkerVisible: false,
+      });
+      const yellowDnSeries = chart.addLineSeries({
+        color: 'rgba(234, 179, 8, 0.8)',
+        lineWidth: 2,
+        title: '黄梯下轨',
+        crosshairMarkerVisible: false,
+      });
+      // Yellow mid line
+      const yellowMidSeries = chart.addLineSeries({
+        color: 'rgba(234, 179, 8, 0.3)',
+        lineWidth: 1,
+        lineStyle: 2, // dashed
+        title: '',
+        crosshairMarkerVisible: false,
+      });
 
       blueUpSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: l.blueUp })));
       blueDnSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: l.blueDn })));
+      blueMidSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: (l.blueUp + l.blueDn) / 2 })));
       yellowUpSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: l.yellowUp })));
       yellowDnSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: l.yellowDn })));
+      yellowMidSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: (l.yellowUp + l.yellowDn) / 2 })));
     }
 
-    // CD Signal markers
+    // CD Signal markers on main chart
     if (cdSignals.length > 0) {
       const markers = cdSignals.map(s => ({
         time: toChartTime(s.time, interval),
         position: s.type === 'buy' ? 'belowBar' as const : 'aboveBar' as const,
-        color: s.type === 'buy' ? '#22c55e' : '#ef4444',
+        color: s.type === 'buy' ? '#ef4444' : '#22c55e',
         shape: s.type === 'buy' ? 'arrowUp' as const : 'arrowDown' as const,
         text: s.label,
       }));
@@ -142,7 +182,7 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     };
   }, [candles, interval, cdSignals, height, chartOptions]);
 
-  // MACD sub-chart
+  // MACD sub-chart with CD signal text markers
   useEffect(() => {
     if (!macdChartRef.current || candles.length === 0) return;
 
@@ -154,7 +194,7 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     const chart = createChart(macdChartRef.current, {
       ...chartOptions,
       width: macdChartRef.current.clientWidth,
-      height: 150,
+      height: 180,
     });
     macdChartApi.current = chart;
 
@@ -176,6 +216,20 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     deaSeries.setData(deaData);
     macdSeries.setData(macdData);
 
+    // Add CD signal markers on DIFF line in MACD sub-chart
+    // DRAWTEXT(DXDX,(DIFF / 0.81),'抄底'),COLORRED;
+    // DRAWTEXT(DBJGXC,(DIFF * 1.21),'卖出'),COLORGREEN;
+    if (cdSignals.length > 0) {
+      const markers = cdSignals.map(s => ({
+        time: toChartTime(s.time, interval),
+        position: s.type === 'buy' ? 'belowBar' as const : 'aboveBar' as const,
+        color: s.type === 'buy' ? '#ef4444' : '#22c55e',
+        shape: 'circle' as const,
+        text: s.label,
+      }));
+      diffSeries.setMarkers(markers);
+    }
+
     chart.timeScale().fitContent();
 
     const handleResize = () => {
@@ -188,7 +242,7 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
       chart.remove();
       macdChartApi.current = null;
     };
-  }, [candles, interval, chartOptions]);
+  }, [candles, interval, cdSignals, chartOptions]);
 
   // Buy/Sell Pressure sub-chart
   useEffect(() => {
@@ -276,6 +330,9 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
       <div className="text-xs text-muted-foreground px-2 py-1 flex items-center gap-2">
         <span className="font-medium text-foreground">副图</span>
         <span>CD抄底指标 (MACD)</span>
+        <span className="text-xs text-red-400 ml-1">抄底</span>
+        <span className="text-xs text-green-400">/</span>
+        <span className="text-xs text-green-400">卖出</span>
       </div>
       <div ref={macdChartRef} className="w-full rounded-md overflow-hidden border border-border" />
       

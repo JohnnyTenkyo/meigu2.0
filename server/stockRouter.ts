@@ -25,29 +25,57 @@ interface Candle {
   volume: number;
 }
 
-// Aggregate 1h candles to 4h (US market hours)
-function aggregate1hTo4h(candles: Candle[]): Candle[] {
+// Get ET (Eastern Time) hour from UTC timestamp
+function getETHour(timestamp: number): { etH: number; etM: number; dateStr: string } {
+  const d = new Date(timestamp);
+  const month = d.getUTCMonth();
+  // Simplified DST check: March-November = DST (UTC-4), else EST (UTC-5)
+  const isDST = month >= 2 && month <= 10;
+  const etOffset = isDST ? 4 : 5;
+  
+  let etH = d.getUTCHours() - etOffset;
+  let etDay = d.getUTCDate();
+  let etMonth = d.getUTCMonth();
+  let etYear = d.getUTCFullYear();
+  
+  if (etH < 0) {
+    etH += 24;
+    etDay -= 1;
+    if (etDay < 1) {
+      etMonth -= 1;
+      if (etMonth < 0) {
+        etMonth = 11;
+        etYear -= 1;
+      }
+      etDay = new Date(etYear, etMonth + 1, 0).getDate();
+    }
+  }
+  
+  const etM = d.getUTCMinutes();
+  const dateStr = `${etYear}-${String(etMonth + 1).padStart(2, '0')}-${String(etDay).padStart(2, '0')}`;
+  
+  return { etH, etM, dateStr };
+}
+
+// Generic aggregation: aggregate smaller candles into larger time blocks
+function aggregateCandles(candles: Candle[], targetMinutes: number): Candle[] {
   if (!candles.length) return [];
 
   const groups = new Map<string, Candle[]>();
 
   for (const c of candles) {
-    const d = new Date(c.time);
-    const month = d.getUTCMonth();
-    const isDST = month >= 2 && month <= 10;
-    const etOffset = isDST ? 4 : 5;
-    const etH = ((d.getUTCHours() - etOffset) + 24) % 24;
-    const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-
-    let block: string;
-    if (etH < 14) {
-      block = `${dateStr}-AM`;
-    } else {
-      block = `${dateStr}-PM`;
-    }
-
-    if (!groups.has(block)) groups.set(block, []);
-    groups.get(block)!.push(c);
+    const { etH, etM, dateStr } = getETHour(c.time);
+    
+    // Calculate total minutes from market open (9:30)
+    const totalMinutes = (etH - 9) * 60 + (etM - 30);
+    if (totalMinutes < 0) continue; // Before market open
+    
+    // Group by block
+    const blockIndex = Math.floor(totalMinutes / targetMinutes);
+    const key = `${dateStr}-${blockIndex}`;
+    
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c);
   }
 
   const result: Candle[] = [];
@@ -92,14 +120,17 @@ function aggregateDailyToMonthly(candles: Candle[]): Candle[] {
 }
 
 // Interval to Yahoo params mapping
-function getYahooParams(interval: string): { yahooInterval: string; range: string } {
-  const map: Record<string, { yahooInterval: string; range: string }> = {
+function getYahooParams(interval: string): { yahooInterval: string; range: string; aggregateMinutes?: number } {
+  const map: Record<string, { yahooInterval: string; range: string; aggregateMinutes?: number }> = {
     '1m': { yahooInterval: '1m', range: '7d' },
+    '3m': { yahooInterval: '1m', range: '7d', aggregateMinutes: 3 },
     '5m': { yahooInterval: '5m', range: '60d' },
     '15m': { yahooInterval: '15m', range: '60d' },
     '30m': { yahooInterval: '30m', range: '60d' },
     '1h': { yahooInterval: '60m', range: '730d' },
-    '4h': { yahooInterval: '60m', range: '730d' },
+    '2h': { yahooInterval: '60m', range: '730d', aggregateMinutes: 120 },
+    '3h': { yahooInterval: '60m', range: '730d', aggregateMinutes: 180 },
+    '4h': { yahooInterval: '60m', range: '730d', aggregateMinutes: 240 },
     '1d': { yahooInterval: '1d', range: '5y' },
     '1mo': { yahooInterval: '1mo', range: 'max' },
   };
@@ -154,12 +185,13 @@ export const stockRouter = router({
     }))
     .query(async ({ input }) => {
       const { symbol, interval } = input;
-      const { yahooInterval, range } = getYahooParams(interval);
+      const { yahooInterval, range, aggregateMinutes } = getYahooParams(interval);
 
       let candles = await fetchYahooChart(symbol, yahooInterval, range);
 
-      if (interval === '4h') {
-        candles = aggregate1hTo4h(candles);
+      // Aggregate if needed (3m, 2h, 3h, 4h)
+      if (aggregateMinutes) {
+        candles = aggregateCandles(candles, aggregateMinutes);
       }
 
       return candles;
@@ -209,7 +241,6 @@ export const stockRouter = router({
     .query(async ({ input }) => {
       const results: Record<string, any> = {};
       
-      // Fetch quotes sequentially to avoid rate limiting
       for (const symbol of input.symbols) {
         try {
           const cacheKey = `quote:${symbol}`;

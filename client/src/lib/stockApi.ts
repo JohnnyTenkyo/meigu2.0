@@ -1,15 +1,20 @@
 import { Candle, StockQuote, TimeInterval } from './types';
 
 // Convert K-line time to Futu standard (end time)
+// 1m K线第一根9:30开始 → 显示9:31
+// 30m K线第一根9:30开始 → 显示10:00
 export function toFutuTime(timestamp: number, interval: TimeInterval): number {
   if (['1d', '1mo'].includes(interval)) return timestamp;
 
   const intervalMs: Record<string, number> = {
     '1m': 60000,
+    '3m': 180000,
     '5m': 300000,
     '15m': 900000,
     '30m': 1800000,
     '1h': 3600000,
+    '2h': 7200000,
+    '3h': 10800000,
     '4h': 14400000,
   };
 

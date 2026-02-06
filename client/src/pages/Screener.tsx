@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { ArrowLeft, Filter, Loader2, Zap, TrendingUp, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Filter, Loader2, Zap, TrendingUp, BarChart3, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fetchStockData } from '@/lib/stockApi';
-import { calculateBuySellPressure, calculateCDSignals } from '@/lib/indicators';
+import { calculateBuySellPressure, calculateCDSignals, checkBlueLadderStrength } from '@/lib/indicators';
 import { US_STOCKS } from '@/lib/stockApi';
+import { TimeInterval } from '@/lib/types';
 
 interface ScreenerResult {
   symbol: string;
@@ -12,31 +13,53 @@ interface ScreenerResult {
   detail: string;
 }
 
-const SCREENER_CONDITIONS = [
-  { id: 'bsp_strong_up', label: '买卖力道双位数上涨', desc: '动能变化率≥10%，表示动能强劲，适合进场', icon: Zap },
-  { id: 'cd_buy', label: 'CD抄底信号', desc: '最近出现CD抄底买入信号', icon: TrendingUp },
-  { id: 'cd_strong_buy', label: 'CD强力抄底', desc: '最近出现强力底部背离信号', icon: BarChart3 },
+// Time levels for CD signal and Blue Ladder screening
+const TIME_LEVELS: { value: TimeInterval; label: string }[] = [
+  { value: '5m', label: '5分钟' },
+  { value: '15m', label: '15分钟' },
+  { value: '30m', label: '30分钟' },
+  { value: '1h', label: '1小时' },
+  { value: '2h', label: '2小时' },
+  { value: '3h', label: '3小时' },
+  { value: '4h', label: '4小时' },
 ];
+
+// Lookback: check last 10 candles for signals
+const SIGNAL_LOOKBACK = 10;
 
 export default function Screener() {
   const [, navigate] = useLocation();
-  const [selectedConditions, setSelectedConditions] = useState<string[]>(['bsp_strong_up']);
   const [results, setResults] = useState<ScreenerResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
 
-  const toggleCondition = (id: string) => {
-    setSelectedConditions(prev =>
-      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+  // Condition toggles
+  const [bspEnabled, setBspEnabled] = useState(false);
+  const [cdEnabled, setCdEnabled] = useState(true);
+  const [cdLevels, setCdLevels] = useState<TimeInterval[]>(['4h']);
+  const [ladderEnabled, setLadderEnabled] = useState(false);
+  const [ladderLevels, setLadderLevels] = useState<TimeInterval[]>(['4h']);
+
+  const toggleCdLevel = (level: TimeInterval) => {
+    setCdLevels(prev =>
+      prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level]
     );
   };
 
+  const toggleLadderLevel = (level: TimeInterval) => {
+    setLadderLevels(prev =>
+      prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level]
+    );
+  };
+
+  const hasCondition = bspEnabled || (cdEnabled && cdLevels.length > 0) || (ladderEnabled && ladderLevels.length > 0);
+
   const runScreener = useCallback(async () => {
-    if (selectedConditions.length === 0) return;
+    if (!hasCondition) return;
     setLoading(true);
     setResults([]);
 
-    const stocksToScan = US_STOCKS.slice(0, 30); // Limit for API rate
+    const stocksToScan = US_STOCKS.slice(0, 30);
     setProgress({ current: 0, total: stocksToScan.length });
     const found: ScreenerResult[] = [];
 
@@ -45,50 +68,87 @@ export default function Screener() {
       setProgress({ current: i + 1, total: stocksToScan.length });
 
       try {
-        const candles = await fetchStockData(symbol, '1d');
-        if (candles.length < 30) continue;
-
-        // Check conditions
-        if (selectedConditions.includes('bsp_strong_up')) {
-          const pressure = calculateBuySellPressure(candles);
-          const recent = pressure.slice(-5);
-          const strongUp = recent.find(p => p.signal === 'strong_up');
-          if (strongUp) {
-            found.push({
-              symbol,
-              signal: '⚡ 买卖力道双位数上涨',
-              detail: `变化率: +${strongUp.changeRate.toFixed(1)}%`,
-            });
-            continue;
-          }
-        }
-
-        if (selectedConditions.includes('cd_buy') || selectedConditions.includes('cd_strong_buy')) {
-          const signals = calculateCDSignals(candles);
-          const recentBuy = signals.slice(-3).filter(s => s.type === 'buy');
-          if (selectedConditions.includes('cd_strong_buy')) {
-            const strong = recentBuy.find(s => s.strength === 'strong');
-            if (strong) {
-              found.push({ symbol, signal: '🔥 CD强力抄底', detail: strong.label });
+        // Check buy/sell pressure
+        if (bspEnabled) {
+          const candles = await fetchStockData(symbol, '1d');
+          if (candles.length >= 30) {
+            const pressure = calculateBuySellPressure(candles);
+            const recent = pressure.slice(-5);
+            const strongUp = recent.find(p => p.signal === 'strong_up');
+            if (strongUp) {
+              found.push({
+                symbol,
+                signal: '⚡ 买卖力道双位数上涨',
+                detail: `变化率: +${strongUp.changeRate.toFixed(1)}%`,
+              });
               continue;
             }
           }
-          if (selectedConditions.includes('cd_buy') && recentBuy.length > 0) {
-            found.push({ symbol, signal: '📈 CD抄底信号', detail: recentBuy[0].label });
-            continue;
+        }
+
+        // Check CD signals at selected levels
+        if (cdEnabled && cdLevels.length > 0) {
+          let cdFound = false;
+          for (const level of cdLevels) {
+            try {
+              const candles = await fetchStockData(symbol, level);
+              if (candles.length < 30) continue;
+              const signals = calculateCDSignals(candles);
+              // Check last SIGNAL_LOOKBACK candles for buy signals
+              const recentSignals = signals.filter(s => {
+                const idx = candles.findIndex(c => c.time === s.time);
+                return idx >= candles.length - SIGNAL_LOOKBACK && s.type === 'buy';
+              });
+              if (recentSignals.length > 0) {
+                found.push({
+                  symbol,
+                  signal: `📈 CD抄底 (${level})`,
+                  detail: `${recentSignals[0].label}`,
+                });
+                cdFound = true;
+                break;
+              }
+            } catch {
+              // Skip failed level
+            }
+            await new Promise(r => setTimeout(r, 100));
           }
+          if (cdFound) continue;
+        }
+
+        // Check blue ladder strength at selected levels
+        if (ladderEnabled && ladderLevels.length > 0) {
+          let ladderFound = false;
+          for (const level of ladderLevels) {
+            try {
+              const candles = await fetchStockData(symbol, level);
+              if (candles.length < 60) continue;
+              if (checkBlueLadderStrength(candles)) {
+                found.push({
+                  symbol,
+                  signal: `🔵 蓝色梯子走强 (${level})`,
+                  detail: '蓝梯向上 + 蓝梯上轨>黄梯上轨 + 收盘>蓝梯下轨',
+                });
+                ladderFound = true;
+                break;
+              }
+            } catch {
+              // Skip failed level
+            }
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (ladderFound) continue;
         }
       } catch {
         // Skip failed stocks
       }
 
-      // Small delay to avoid rate limiting
       await new Promise(r => setTimeout(r, 200));
     }
 
     setResults(found);
     setLoading(false);
-  }, [selectedConditions]);
+  }, [bspEnabled, cdEnabled, cdLevels, ladderEnabled, ladderLevels, hasCondition]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -107,34 +167,98 @@ export default function Screener() {
           <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-1.5">
             <Filter size={14} /> 筛选条件
           </h2>
-          <div className="grid gap-2">
-            {SCREENER_CONDITIONS.map(cond => {
-              const Icon = cond.icon;
-              const selected = selectedConditions.includes(cond.id);
-              return (
-                <button
-                  key={cond.id}
-                  onClick={() => toggleCondition(cond.id)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg border text-left transition-colors ${
-                    selected
-                      ? 'border-primary bg-primary/10 text-foreground'
-                      : 'border-border bg-card text-muted-foreground hover:bg-accent/50'
-                  }`}
-                >
-                  <Icon size={18} className={selected ? 'text-primary' : ''} />
-                  <div>
-                    <div className="text-sm font-medium">{cond.label}</div>
-                    <div className="text-xs text-muted-foreground">{cond.desc}</div>
-                  </div>
-                </button>
-              );
-            })}
+          <div className="space-y-4">
+
+            {/* Buy/Sell Pressure */}
+            <div className={`rounded-lg border p-4 transition-colors ${bspEnabled ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}>
+              <button
+                onClick={() => setBspEnabled(!bspEnabled)}
+                className="flex items-center gap-3 w-full text-left"
+              >
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${bspEnabled ? 'border-primary bg-primary' : 'border-muted-foreground'}`}>
+                  {bspEnabled && <span className="text-white text-xs">✓</span>}
+                </div>
+                <Zap size={18} className={bspEnabled ? 'text-primary' : 'text-muted-foreground'} />
+                <div>
+                  <div className="text-sm font-medium">买卖力道双位数上涨</div>
+                  <div className="text-xs text-muted-foreground">成交量放大+动能变化率≥10%</div>
+                </div>
+              </button>
+            </div>
+
+            {/* CD Signal with multi-level */}
+            <div className={`rounded-lg border p-4 transition-colors ${cdEnabled ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}>
+              <button
+                onClick={() => setCdEnabled(!cdEnabled)}
+                className="flex items-center gap-3 w-full text-left"
+              >
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${cdEnabled ? 'border-primary bg-primary' : 'border-muted-foreground'}`}>
+                  {cdEnabled && <span className="text-white text-xs">✓</span>}
+                </div>
+                <TrendingUp size={18} className={cdEnabled ? 'text-primary' : 'text-muted-foreground'} />
+                <div>
+                  <div className="text-sm font-medium">CD抄底信号</div>
+                  <div className="text-xs text-muted-foreground">往前10根K线内出现过抄底信号（可选多个级别）</div>
+                </div>
+              </button>
+              {cdEnabled && (
+                <div className="mt-3 ml-8 flex flex-wrap gap-2">
+                  {TIME_LEVELS.map(level => (
+                    <button
+                      key={level.value}
+                      onClick={() => toggleCdLevel(level.value)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                        cdLevels.includes(level.value)
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-secondary-foreground hover:bg-accent'
+                      }`}
+                    >
+                      {level.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Blue Ladder Strength with multi-level */}
+            <div className={`rounded-lg border p-4 transition-colors ${ladderEnabled ? 'border-blue-500 bg-blue-500/5' : 'border-border bg-card'}`}>
+              <button
+                onClick={() => setLadderEnabled(!ladderEnabled)}
+                className="flex items-center gap-3 w-full text-left"
+              >
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${ladderEnabled ? 'border-blue-500 bg-blue-500' : 'border-muted-foreground'}`}>
+                  {ladderEnabled && <span className="text-white text-xs">✓</span>}
+                </div>
+                <Activity size={18} className={ladderEnabled ? 'text-blue-500' : 'text-muted-foreground'} />
+                <div>
+                  <div className="text-sm font-medium">蓝色梯子走强</div>
+                  <div className="text-xs text-muted-foreground">蓝梯向上 + 蓝梯上轨 &gt; 黄梯上轨 + 收盘价 &gt; 蓝梯下轨</div>
+                </div>
+              </button>
+              {ladderEnabled && (
+                <div className="mt-3 ml-8 flex flex-wrap gap-2">
+                  {TIME_LEVELS.map(level => (
+                    <button
+                      key={level.value}
+                      onClick={() => toggleLadderLevel(level.value)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                        ladderLevels.includes(level.value)
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-secondary text-secondary-foreground hover:bg-accent'
+                      }`}
+                    >
+                      {level.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </section>
 
         <Button
           onClick={runScreener}
-          disabled={loading || selectedConditions.length === 0}
+          disabled={loading || !hasCondition}
           className="w-full"
         >
           {loading ? (
@@ -162,7 +286,7 @@ export default function Screener() {
                 >
                   <div>
                     <span className="font-semibold text-sm">{r.symbol}</span>
-                    <span className="ml-2 text-xs text-purple">{r.signal}</span>
+                    <span className="ml-2 text-xs text-primary">{r.signal}</span>
                   </div>
                   <span className="text-xs text-muted-foreground">{r.detail}</span>
                 </div>

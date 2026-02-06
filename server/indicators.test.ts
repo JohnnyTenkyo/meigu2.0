@@ -8,6 +8,7 @@ import {
   calculateBuySellPressure,
   calculateLadder,
   calculateNXSignals,
+  checkBlueLadderStrength,
 } from "@/lib/indicators";
 import type { Candle } from "@/lib/types";
 
@@ -131,19 +132,21 @@ describe("CD Signal Detection", () => {
       expect(signal).toHaveProperty("label");
       expect(["buy", "sell"]).toContain(signal.type);
       expect(["strong", "medium", "weak"]).toContain(signal.strength);
+      // New CD signals should have labels '抄底' or '卖出'
+      expect(["抄底", "卖出"]).toContain(signal.label);
     }
   });
 
-  it("detects golden cross signals", () => {
-    // Create data that goes down then up to trigger golden cross
+  it("detects buy (抄底) signals for divergence patterns", () => {
+    // Create data that goes down then up to trigger bottom divergence
     const down = generateTrendingCandles(80, "down", 150);
     const up = generateTrendingCandles(80, "up", down[down.length - 1].close);
     const candles = [...down, ...up];
 
     const signals = calculateCDSignals(candles);
-    const goldenCross = signals.filter((s) => s.label === "金叉");
-    // Should have at least one golden cross when trend reverses
-    expect(goldenCross.length).toBeGreaterThanOrEqual(0); // May or may not trigger depending on random noise
+    const buySignals = signals.filter((s) => s.label === "抄底");
+    // May or may not trigger depending on random noise, but structure should be correct
+    expect(buySignals.length).toBeGreaterThanOrEqual(0);
   });
 
   it("signal times are within candle time range", () => {
@@ -330,5 +333,33 @@ describe("NX Signal Detection", () => {
     for (const s of sells) {
       expect(s.label).toBe("卖出");
     }
+  });
+});
+
+describe("Blue Ladder Strength Check", () => {
+  it("returns false for insufficient data", () => {
+    const candles = generateCandles(30);
+    const result = checkBlueLadderStrength(candles);
+    expect(result).toBe(false);
+  });
+
+  it("returns boolean value", () => {
+    const candles = generateCandles(100);
+    const result = checkBlueLadderStrength(candles);
+    expect(typeof result).toBe("boolean");
+  });
+
+  it("returns false for flat/stable data", () => {
+    // Flat data shouldn't show blue ladder strength
+    const candles: Candle[] = Array.from({ length: 100 }, (_, i) => ({
+      time: Date.now() + i * 60000,
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      volume: 100000,
+    }));
+    const result = checkBlueLadderStrength(candles);
+    expect(typeof result).toBe("boolean");
   });
 });

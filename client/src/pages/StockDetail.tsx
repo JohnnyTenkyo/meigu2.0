@@ -13,10 +13,13 @@ import { Candle, TimeInterval, CDSignal, BuySellPressure, NXSignal, StockQuote }
 
 const INTERVALS: { value: TimeInterval; label: string }[] = [
   { value: '1m', label: '1m' },
+  { value: '3m', label: '3m' },
   { value: '5m', label: '5m' },
   { value: '15m', label: '15m' },
   { value: '30m', label: '30m' },
   { value: '1h', label: '1h' },
+  { value: '2h', label: '2h' },
+  { value: '3h', label: '3h' },
   { value: '4h', label: '4h' },
   { value: '1d', label: '1d' },
   { value: '1mo', label: '1mo' },
