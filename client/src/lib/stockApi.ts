@@ -69,15 +69,30 @@ export async function fetchBatchQuotes(symbols: string[]): Promise<Record<string
   return trpcQuery<Record<string, StockQuote>>('stock.batchQuotes', { symbols });
 }
 
-// US Stock list
+// US Stock list - Extended with user's watchlist (239 stocks)
 export const US_STOCKS = [
-  "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "BRK.B", "AVGO", "JPM",
-  "LLY", "V", "UNH", "MA", "COST", "HD", "PG", "JNJ", "NFLX", "CRM",
-  "AMD", "ORCL", "BAC", "ADBE", "KO", "MRK", "PEP", "TMO", "ACN", "MCD",
-  "CSCO", "ABT", "WMT", "DHR", "NKE", "DIS", "INTC", "VZ", "CMCSA", "PFE",
-  "QCOM", "TXN", "PM", "IBM", "GE", "CAT", "BA", "RTX", "AMAT", "BKNG",
-  "PLTR", "COIN", "SOFI", "HOOD", "MSTR", "ARM", "SMCI", "RKLB", "IONQ", "RGTI",
-  "SOUN", "APP", "CRWD", "SNOW", "DDOG", "NET", "SHOP", "SQ", "PYPL", "ROKU",
-  "RIVN", "LCID", "NIO", "LI", "XPEV", "BABA", "JD", "PDD", "BIDU", "FUTU",
-  "GME", "AMC", "BBBY", "MARA", "RIOT", "CLSK", "HUT", "BTBT", "CIFR", "IREN",
+  "QQQ", "SPY", "GDXU", "TSLA", "TSLL", "OPEN", "OPEX", "DJT", "DJTU", "ONDS",
+  "NVTS", "DXYZ", "UPST", "RDDT", "IWM", "UVXY", "RGTI", "ASTS", "ALAB", "OKLO",
+  "CVNA", "CRWV", "CRCL", "SOXL", "BBAI", "SMCI", "SOFI", "HOOD", "COIN", "AMD",
+  "DPST", "FIG", "SBET", "RXRX", "PLTR", "HIMS", "SMR", "SOUN", "UNH", "MRNA",
+  "MSTR", "TEM", "MP", "MU", "RKLB", "U", "STX", "AGQ", "CRWD", "FMCC",
+  "FNMA", "CRML", "NVTX", "ONDL", "TSNF", "TSRS", "TSES", "TSIC", "TSSD", "NXDR",
+  "TGL", "SMX", "WRD", "TQQQ", "GOOG", "AVGO", "AMZN", "ASML", "TSM", "LUNR",
+  "ARM", "NAIL", "BETR", "SNGX", "DGNX", "SNDK", "WDC", "QS", "BMY", "VST",
+  "AES", "DUOL", "OXY", "META", "AAPL", "APP", "QCOM", "NNE", "SERV", "APG",
+  "WMT", "MSFT", "PZZA", "GRRR", "MARA", "NVO", "NKE", "NVDA", "ARQQ", "LAES",
+  "IONQ", "NMAX", "AAL", "QMCO", "QUBT", "WOLF", "UPSX", "QBTS", "CRCA", "CWVX",
+  "OKLL", "RGTX", "RDTL", "AMPX", "TGT", "BYND", "MEME", "POWI", "POET", "CIFR",
+  "HUT", "IREN", "BTQ", "USAR", "TTD", "IBM", "FIGR", "GEMI", "ORBS", "ATAI",
+  "BEKE", "OPAD", "DUO", "PDD", "KTOS", "CRM", "BLSH", "TLRY", "VSCO", "IXHL",
+  "LHX", "XRPT", "BLK", "BTBT", "FUTU", "VOR", "ASST", "DDOG", "BMNR", "VGT",
+  "VOO", "LULU", "AEVA", "TRON", "MRVL", "RBLX", "AGIG", "USO", "LBRT", "PSH",
+  "PBR", "PFE", "AIRO", "AMGN", "ORCL", "CHYM", "NAKA", "BNS", "NBIS", "ZS",
+  "APLD", "AI", "SHOP", "SPOT", "RGC", "PYPL", "SNAP", "PONY", "MELI", "LLY",
+  "BA", "BULL", "TMC", "B", "NEM", "SQQQ", "UVIX", "BRK.B", "AFRM", "COST",
+  "CLSK", "PM", "XOM", "GM", "JD", "HSAI", "KHC", "YINN", "VZ", "BILI",
+  "HII", "NFLX", "V", "TLT", "VRT", "NIO", "DVN", "GDS", "GLD", ".VIX",
+  "MCHP", "INTC", "APPS", "KO", "AA", "BTC", "LMT", "TMF", "GME", "WKEY",
+  "CSCO", "AUR", "KITT", "ACHR", "RIVN", "CRNC", "RR", "XOVR", "HOLO", "SES",
+  "CELH", "VRSN", "SIRI", "NUKK", "SNOW", "AVDL", "KC", "BABA", "LI",
 ];
