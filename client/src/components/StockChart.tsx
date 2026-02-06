@@ -1,7 +1,7 @@
 import { useEffect, useRef, useMemo } from 'react';
 import { createChart, IChartApi, CandlestickData, HistogramData, LineData, Time } from 'lightweight-charts';
 import { Candle, TimeInterval, CDSignal, BuySellPressure } from '@/lib/types';
-import { calculateMACD, calculateBuySellPressure, calculateLadder, calculateCDSignals } from '@/lib/indicators';
+import { calculateMACD, calculateLadder } from '@/lib/indicators';
 import { toFutuTime } from '@/lib/stockApi';
 
 interface StockChartProps {
@@ -50,7 +50,7 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     },
   }), [interval]);
 
-  // Main chart (K-line + Ladder with smooth styling + vertical lines)
+  // Main chart
   useEffect(() => {
     if (!mainChartRef.current || candles.length === 0) return;
 
@@ -85,62 +85,59 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     }));
     candleSeries.setData(candleData);
 
-    // Ladder lines - smoother with area fill effect
+    // Ladder lines - 复刻富途牛牛逻辑
     const ladder = calculateLadder(candles);
     if (ladder.length > 0) {
-      // Blue ladder - upper and lower with mid line
+      // 蓝梯子
       const blueUpSeries = chart.addLineSeries({
         color: 'rgba(59, 130, 246, 0.8)',
-        lineWidth: 2,
-        title: '蓝梯上轨',
+        lineWidth: 1,
+        title: '蓝梯A',
         crosshairMarkerVisible: false,
       });
       const blueDnSeries = chart.addLineSeries({
         color: 'rgba(59, 130, 246, 0.8)',
-        lineWidth: 2,
-        title: '蓝梯下轨',
-        crosshairMarkerVisible: false,
-      });
-      // Blue mid line (vertical reference inside the channel)
-      const blueMidSeries = chart.addLineSeries({
-        color: 'rgba(59, 130, 246, 0.3)',
         lineWidth: 1,
-        lineStyle: 2, // dashed
-        title: '',
+        title: '蓝梯B',
         crosshairMarkerVisible: false,
       });
-
-      // Yellow ladder - upper and lower with mid line
+      
+      // 黄梯子
       const yellowUpSeries = chart.addLineSeries({
         color: 'rgba(234, 179, 8, 0.8)',
-        lineWidth: 2,
-        title: '黄梯上轨',
+        lineWidth: 1,
+        title: '黄梯A1',
         crosshairMarkerVisible: false,
       });
       const yellowDnSeries = chart.addLineSeries({
         color: 'rgba(234, 179, 8, 0.8)',
-        lineWidth: 2,
-        title: '黄梯下轨',
-        crosshairMarkerVisible: false,
-      });
-      // Yellow mid line
-      const yellowMidSeries = chart.addLineSeries({
-        color: 'rgba(234, 179, 8, 0.3)',
         lineWidth: 1,
-        lineStyle: 2, // dashed
-        title: '',
+        title: '黄梯B1',
         crosshairMarkerVisible: false,
       });
 
-      blueUpSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: l.blueUp })));
-      blueDnSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: l.blueDn })));
-      blueMidSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: (l.blueUp + l.blueDn) / 2 })));
-      yellowUpSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: l.yellowUp })));
-      yellowDnSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: l.yellowDn })));
-      yellowMidSeries.setData(ladder.map(l => ({ time: toChartTime(l.time, interval), value: (l.yellowUp + l.yellowDn) / 2 })));
+      // 填充逻辑：轻量级图表不支持 null 值，且 STICKLINE 在条件不满足时不显示。
+      // 为了符合富途体验，我们始终显示线条，因为 A/B 线本身就是 EMA。
+      blueUpSeries.setData(ladder.map(l => ({ 
+        time: toChartTime(l.time, interval), 
+        value: l.blueUp 
+      })));
+      blueDnSeries.setData(ladder.map(l => ({ 
+        time: toChartTime(l.time, interval), 
+        value: l.blueDn 
+      })));
+      
+      yellowUpSeries.setData(ladder.map(l => ({ 
+        time: toChartTime(l.time, interval), 
+        value: l.yellowUp 
+      })));
+      yellowDnSeries.setData(ladder.map(l => ({ 
+        time: toChartTime(l.time, interval), 
+        value: l.yellowDn 
+      })));
     }
 
-    // CD Signal markers on main chart
+    // CD Signal markers
     if (cdSignals.length > 0) {
       const markers = cdSignals.map(s => ({
         time: toChartTime(s.time, interval),
@@ -152,7 +149,7 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
       candleSeries.setMarkers(markers);
     }
 
-    // Volume as histogram overlay
+    // Volume
     const volumeSeries = chart.addHistogramSeries({
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
@@ -182,7 +179,7 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     };
   }, [candles, interval, cdSignals, height, chartOptions]);
 
-  // MACD sub-chart with CD signal text markers
+  // MACD sub-chart
   useEffect(() => {
     if (!macdChartRef.current || candles.length === 0) return;
 
@@ -216,9 +213,6 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     deaSeries.setData(deaData);
     macdSeries.setData(macdData);
 
-    // Add CD signal markers on DIFF line in MACD sub-chart
-    // DRAWTEXT(DXDX,(DIFF / 0.81),'抄底'),COLORRED;
-    // DRAWTEXT(DBJGXC,(DIFF * 1.21),'卖出'),COLORGREEN;
     if (cdSignals.length > 0) {
       const markers = cdSignals.map(s => ({
         time: toChartTime(s.time, interval),
@@ -267,7 +261,6 @@ export default function StockChart({ candles, interval, cdSignals, buySellPressu
     }));
     pressureSeries.setData(pressureData);
 
-    // Add markers for strong signals (lightning bolt)
     const markers = buySellPressure
       .filter(p => p.signal === 'strong_up')
       .map(p => ({
